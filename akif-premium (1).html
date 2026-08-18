@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Akif Fast Food — Lomé</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,600;0,700;0,800;1,600&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          red: { DEFAULT: '#E31E27', deep: '#A5151C' },
+          flame: '#F5A623',
+          navy: '#1B2A5B',
+          bg: '#0C0B0E',
+          panel: '#18161B',
+          panel2: '#211E24',
+          line: 'rgba(255,255,255,0.08)',
+          bone: '#F6F2EC',
+          mut: '#9A9296',
+        },
+        fontFamily: {
+          serif: ['"Fraunces"', 'serif'],
+          body: ['"Inter"', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  html { scroll-behavior: smooth; }
+  body { font-family: 'Inter', sans-serif; background: #0C0B0E; color: #F6F2EC; }
+  ::-webkit-scrollbar { display: none; }
+  * { scrollbar-width: none; }
+
+  /* ---- Catégories : scroll horizontal + indicateur animé ---- */
+  #catScroll { scroll-snap-type: x proximity; }
+  .cat-btn { scroll-snap-align: start; transition: color .2s ease; white-space: nowrap; }
+  .cat-btn.active { color: #F6F2EC; }
+  #catIndicator { transition: transform .35s cubic-bezier(.22,1,.36,1), width .35s cubic-bezier(.22,1,.36,1); }
+
+  /* ---- Cartes produits : tilt 3D au survol ---- */
+  #productGrid { perspective: 1400px; }
+  .p-card { transition: transform .15s ease, box-shadow .25s ease; transform-style: preserve-3d; cursor: pointer; }
+  .p-card:hover { box-shadow: 0 30px 60px -20px rgba(0,0,0,0.6); }
+  .p-img { transition: transform .5s cubic-bezier(.22,1,.36,1); }
+  .p-card:hover .p-img { transform: scale(1.06) translateZ(20px); }
+
+  @keyframes pop { 0%{transform:scale(1)} 45%{transform:scale(1.4)} 100%{transform:scale(1)} }
+  .pop { animation: pop .35s ease; }
+  @keyframes floatY { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+  .float-slow { animation: floatY 5s ease-in-out infinite; }
+
+  /* ---- Modal produit ---- */
+  #productModal { transition: opacity .25s ease; }
+  #productModalCard { transition: transform .3s cubic-bezier(.22,1,.36,1), opacity .3s ease; }
+
+  /* ---- Panier (drawer desktop / sheet mobile) ---- */
+  #cartPanel { transition: transform .35s cubic-bezier(.22,1,.36,1); }
+
+  /* ---- Barre panier flottante mobile ---- */
+  #mobileCartBar { transition: transform .3s cubic-bezier(.22,1,.36,1); }
+
+  /* ---- Skeletons ---- */
+  @keyframes shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
+  .skeleton { background: linear-gradient(90deg, #1C1A1F 25%, #26232A 37%, #1C1A1F 63%); background-size: 800px 100%; animation: shimmer 1.4s linear infinite; }
+
+  /* ---- Toast confirmation ---- */
+  #toast { transition: opacity .25s ease, transform .25s ease; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ⚠️ Prix "0" = placeholder, à remplacer par les vrais tarifs d'Akif. -->
+
+<!-- ============ HEADER FLOTTANT (pilule, superposé au hero) ============ -->
+<header class="fixed top-4 sm:top-6 left-0 right-0 z-40 px-4 sm:px-8">
+  <div class="max-w-2xl mx-auto flex items-center justify-between gap-3 bg-black/40 backdrop-blur-xl border border-white/10 rounded-full pl-2 pr-2 py-2 shadow-2xl">
+    <a href="#top" class="flex items-center gap-2 pl-1">
+      <span class="relative flex items-center justify-center w-9 h-9 rounded-full bg-bone flex-shrink-0">
+        <span class="absolute -top-1 -right-1 text-[10px]">🔥</span>
+        <span class="font-serif italic font-bold text-red text-sm leading-none">Ak<span class="lowercase">if</span></span>
+      </span>
+      <span class="hidden sm:block font-serif italic font-bold text-bone text-sm">Fast Food</span>
+    </a>
+    <div class="hidden sm:flex items-center gap-1 text-xs font-semibold text-bone/70">
+      <a href="tel:+22897041414" class="px-3 py-1.5 rounded-full hover:bg-white/10 hover:text-bone transition-colors">📞 Appeler</a>
+    </div>
+    <button id="desktopCartBtn" class="flex items-center gap-2 bg-red hover:bg-red-deep rounded-full pl-3 pr-2.5 py-2 transition-colors">
+      <span class="text-xs font-bold text-bone hidden sm:inline" id="desktopCartLabel">Panier</span>
+      <span id="desktopCartCount" class="bg-bone text-red text-[11px] font-bold w-6 h-6 rounded-full flex items-center justify-center">0</span>
+    </button>
+  </div>
+</header>
+
+<!-- ============ HERO — PLEIN ÉCRAN IMMERSIF ============ -->
+<section id="top" class="relative h-[92vh] min-h-[560px] overflow-hidden flex items-end">
+  <img src="https://images.unsplash.com/photo-1529006557810-274b9b2fc783?auto=format&fit=crop&w=1600&q=80"
+       alt="Akif Fast Food" class="absolute inset-0 w-full h-full object-cover">
+  <div class="absolute inset-0 bg-gradient-to-t from-bg via-bg/60 to-bg/10"></div>
+  <div class="absolute inset-0 bg-gradient-to-r from-black/50 via-transparent to-transparent"></div>
+
+  <div class="relative w-full max-w-7xl mx-auto px-5 sm:px-8 pb-10 sm:pb-14">
+    <span class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.25em] text-flame mb-4">
+      <span class="w-1.5 h-1.5 rounded-full bg-flame"></span> Fast-food libanais — Lomé
+    </span>
+    <h1 class="font-serif italic font-bold text-5xl sm:text-7xl leading-[0.98] text-bone max-w-2xl">
+      Le goût qui<br>vous fait <span class="text-red not-italic">revenir.</span>
+    </h1>
+    <p class="mt-5 text-bone/70 text-lg max-w-md">
+      Shawarma, burgers, grillades et fruits de mer — préparés vite, servis généreux.
+    </p>
+    <a href="#menu" class="mt-8 inline-flex items-center gap-2 bg-red hover:bg-red-deep text-bone font-bold px-8 py-4 rounded-full transition-colors">
+      Commander maintenant ↓
+    </a>
+  </div>
+</section>
+
+<!-- ============ NAV CATÉGORIES (scroll horizontal + indicateur) ============ -->
+<div id="menu" class="sticky top-0 z-30 bg-bg/95 backdrop-blur-xl border-b border-line pt-2">
+  <div class="max-w-7xl mx-auto px-5 sm:px-8">
+    <div id="catScroll" class="relative flex gap-7 overflow-x-auto pt-16 sm:pt-14 pb-4">
+      <button data-cat="populaires" class="cat-btn active text-sm font-bold text-mut">⭐ Populaires</button>
+      <button data-cat="shawarma" class="cat-btn text-sm font-bold text-mut">🌯 Shawarma</button>
+      <button data-cat="burgers" class="cat-btn text-sm font-bold text-mut">🍔 Burgers</button>
+      <button data-cat="grillades" class="cat-btn text-sm font-bold text-mut">🍗 Grillades</button>
+      <button data-cat="fruitsdemer" class="cat-btn text-sm font-bold text-mut">🦐 Fruits de Mer</button>
+      <button data-cat="pizza" class="cat-btn text-sm font-bold text-mut">🍕 Pizza</button>
+      <button data-cat="accompagnements" class="cat-btn text-sm font-bold text-mut">🍟 Accompagnements</button>
+      <button data-cat="boissons" class="cat-btn text-sm font-bold text-mut">🥤 Boissons</button>
+      <button data-cat="desserts" class="cat-btn text-sm font-bold text-mut">🍰 Desserts</button>
+      <div id="catIndicator" class="absolute bottom-0 left-0 h-[3px] bg-red rounded-full" style="width:0"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ GRILLE PRODUITS ============ -->
+<section class="max-w-7xl mx-auto px-5 sm:px-8 py-10 pb-32">
+  <div id="skeletonGrid" class="hidden grid sm:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+  <div id="productGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+</section>
+
+<!-- ============ INFOS ============ -->
+<section class="max-w-4xl mx-auto px-5 sm:px-8 py-16 text-center border-t border-line">
+  <span class="text-xs font-bold uppercase tracking-[0.2em] text-flame">Infos pratiques</span>
+  <h2 class="font-serif italic font-bold text-3xl mt-2 mb-8 text-bone">On vous attend.</h2>
+  <div class="inline-flex flex-col gap-2.5 text-left bg-panel border border-line rounded-2xl px-8 py-7 text-mut">
+    <p>📍 299, Boulevard du 13-Janvier, Dekon, Lomé</p>
+    <p>📞 +228 97 04 14 14 / +228 92 18 24 24</p>
+    <p>🕒 Ouvert tous les jours, jusque tard le soir</p>
+  </div>
+</section>
+
+<!-- ============ AVIS CLIENTS ============ -->
+<section class="max-w-3xl mx-auto px-5 sm:px-8 py-16 text-center border-t border-line">
+  <span class="text-xs font-bold uppercase tracking-[0.2em] text-flame">Avis clients</span>
+  <h2 class="font-serif italic font-bold text-3xl mt-2 mb-8 text-bone">Ce qu'on en dit.</h2>
+  <div class="border-2 border-dashed border-line rounded-2xl px-8 py-12 bg-panel">
+    <div class="flex justify-center gap-1 text-mut/40 mb-3">
+      <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+    </div>
+    <p class="text-mut max-w-sm mx-auto">
+      Aucun avis pour le moment. Les premiers retours de nos clients apparaîtront ici après leurs commandes.
+    </p>
+  </div>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section class="border-t border-line bg-panel/40">
+  <div class="max-w-3xl mx-auto px-5 sm:px-8 py-16">
+    <div class="text-center mb-10">
+      <span class="text-xs font-bold uppercase tracking-[0.2em] text-flame">Questions</span>
+      <h2 class="font-serif italic font-bold text-3xl mt-2 text-bone">Foire aux questions</h2>
+    </div>
+    <div id="faqList" class="divide-y divide-line border-y border-line"></div>
+  </div>
+</section>
+
+<footer class="border-t border-line">
+  <div class="max-w-7xl mx-auto px-5 sm:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-mut">
+    <p>Akif Fast Food — Lomé, Togo</p>
+    <a href="https://instagram.com/akif.fastfood" target="_blank" rel="noopener" class="hover:text-bone transition-colors">Instagram — @akif.fastfood</a>
+    <p>Menu et prix indicatifs, susceptibles d'évoluer.</p>
+  </div>
+</footer>
+
+<!-- ============ BARRE PANIER FLOTTANTE (mobile) ============ -->
+<div id="mobileCartBar" class="sm:hidden fixed left-4 right-4 bottom-4 z-40 translate-y-24">
+  <button id="mobileCartBtn" class="w-full bg-red text-bone rounded-2xl px-5 py-4 flex items-center justify-between shadow-2xl">
+    <span class="font-bold text-sm">🛒 <span id="mobileCartCount">0</span> article(s) — <span id="mobileCartTotal">0 FCFA</span></span>
+    <span class="text-sm font-bold flex items-center gap-1">Voir le panier →</span>
+  </button>
+</div>
+
+<!-- ============ MODAL PRODUIT ============ -->
+<div id="productModal" class="fixed inset-0 z-50 opacity-0 pointer-events-none">
+  <div id="productModalOverlay" class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+  <div class="absolute inset-0 flex items-end sm:items-center justify-center p-0 sm:p-6">
+    <div id="productModalCard" class="relative bg-panel w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto opacity-0 translate-y-6 sm:translate-y-0 sm:scale-95">
+      <button id="closeModal" class="absolute right-4 top-4 z-10 w-9 h-9 rounded-full bg-black/50 text-bone flex items-center justify-center">✕</button>
+      <div id="modalImgWrap" class="aspect-[4/3] overflow-hidden">
+        <img id="modalImg" src="" alt="" class="w-full h-full object-cover">
+      </div>
+      <div class="p-6">
+        <div id="modalBadge" class="hidden mb-2 inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide rounded-full bg-red text-bone"></div>
+        <h3 id="modalName" class="font-serif italic font-bold text-2xl text-bone"></h3>
+        <p id="modalDesc" class="text-mut text-sm mt-2 leading-relaxed"></p>
+
+        <div id="modalAccompSection" class="hidden mt-6">
+          <p class="text-xs font-bold uppercase tracking-wide text-flame mb-3">Choisissez votre accompagnement</p>
+          <div id="modalAccompList" class="space-y-2"></div>
+        </div>
+
+        <div id="modalSupplementsSection" class="hidden mt-6">
+          <p class="text-xs font-bold uppercase tracking-wide text-flame mb-3">Suppléments</p>
+          <div id="modalSupplementsList" class="space-y-2"></div>
+        </div>
+
+        <div class="mt-6">
+          <p class="text-xs font-bold uppercase tracking-wide text-flame mb-2">Instructions (facultatif)</p>
+          <textarea id="modalInstructions" rows="2" placeholder="Sans oignons, sauce à part..." class="w-full bg-panel2 border border-line rounded-xl px-3.5 py-2.5 text-sm text-bone placeholder:text-mut/60 focus:outline-none focus:border-red"></textarea>
+        </div>
+
+        <div class="mt-7 flex items-center justify-between">
+          <div class="flex items-center gap-3 bg-panel2 border border-line rounded-full px-1.5 py-1.5">
+            <button id="modalQtyMinus" class="w-8 h-8 rounded-full flex items-center justify-center text-lg hover:bg-panel">−</button>
+            <span id="modalQty" class="w-6 text-center font-bold">1</span>
+            <button id="modalQtyPlus" class="w-8 h-8 rounded-full flex items-center justify-center text-lg hover:bg-panel">+</button>
+          </div>
+          <p id="modalPrice" class="font-serif italic font-bold text-2xl text-bone"></p>
+        </div>
+
+        <button id="modalAddBtn" class="mt-6 w-full bg-red hover:bg-red-deep text-bone font-bold py-4 rounded-full transition-colors">
+          Ajouter au panier
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PANIER (drawer desktop / sheet mobile) ============ -->
+<div id="cartOverlay" class="fixed inset-0 bg-black/60 z-50 opacity-0 pointer-events-none transition-opacity"></div>
+<aside id="cartPanel" class="fixed z-[60] bg-panel border-line
+  bottom-0 left-0 right-0 rounded-t-3xl translate-y-full max-h-[85vh]
+  sm:bottom-0 sm:top-0 sm:left-auto sm:right-0 sm:w-[420px] sm:rounded-t-none sm:border-l sm:translate-x-full sm:translate-y-0 sm:max-h-none
+  flex flex-col">
+  <div class="flex items-center justify-between px-6 py-5 border-b border-line">
+    <h3 class="font-serif italic font-bold text-xl text-bone">Mon panier</h3>
+    <button id="closeCart" class="w-9 h-9 rounded-full hover:bg-panel2 flex items-center justify-center">✕</button>
+  </div>
+
+  <div id="cartEmptyState" class="flex-1 flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+    <span class="text-4xl opacity-40">🛒</span>
+    <p class="text-mut">Votre panier est vide pour l'instant.</p>
+  </div>
+
+  <div id="cartItems" class="hidden flex-1 overflow-y-auto px-6 py-5 space-y-4"></div>
+
+  <div id="cartFooter" class="hidden border-t border-line px-6 py-5">
+    <div class="flex justify-between text-mut text-sm mb-1.5">
+      <span>Sous-total</span>
+      <span id="cartSubtotal">0 FCFA</span>
+    </div>
+    <div class="flex justify-between text-mut text-sm mb-3">
+      <span>Livraison</span>
+      <span>À confirmer</span>
+    </div>
+    <div class="flex justify-between font-bold text-lg mb-5 text-bone">
+      <span>Total</span>
+      <span id="cartTotal">0 FCFA</span>
+    </div>
+    <a id="whatsappOrder" href="#" target="_blank" rel="noopener" class="block text-center bg-red hover:bg-red-deep text-bone font-bold px-6 py-4 rounded-full transition-colors">
+      Commander maintenant
+    </a>
+  </div>
+</aside>
+
+<!-- ============ TOAST DE CONFIRMATION ============ -->
+<div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-6 sm:bottom-8 z-[70] opacity-0 translate-y-3 pointer-events-none">
+  <div class="bg-bone text-ink font-bold text-sm px-5 py-3 rounded-full shadow-2xl flex items-center gap-2">
+    <span class="text-red">✓</span> <span id="toastText">Ajouté au panier</span>
+  </div>
+</div>
+
+<script>
+  // ============ NUMÉRO WHATSAPP ============
+  const RESTO_NUMBER = "22897041414";
+
+  // ============ DONNÉES DU MENU ============
+  // ⚠️ Prix "0" = placeholder, à remplacer par les vrais tarifs.
+  const ACCOMP_DEFAULT = ["Frites", "Riz", "Salade"];
+  const SUPP_DEFAULT = [
+    { name: "Fromage", price: 0 },
+    { name: "Sauce spéciale", price: 0 },
+    { name: "Bacon", price: 0 },
+    { name: "Poulet supplémentaire", price: 0 },
+  ];
+
+  const MENU = {
+    shawarma: [
+      { id: "shaw-poulet", name: "Shawarma Poulet", desc: "Poulet mariné, légumes, sauce maison, pain pita.", price: 0, badge: "Best Seller", img: "https://images.unsplash.com/photo-1633321702518-7feccafb94d5?auto=format&fit=crop&w=900&q=80", supplements: SUPP_DEFAULT },
+      { id: "shaw-boeuf", name: "Shawarma Bœuf", desc: "Bœuf mariné, légumes, sauce maison, pain pita.", price: 0, img: "https://images.unsplash.com/photo-1529006557810-274b9b2fc783?auto=format&fit=crop&w=900&q=80", supplements: SUPP_DEFAULT },
+      { id: "shaw-veg", name: "Shawarma Végétarien", desc: "Légumes grillés, houmous, pain pita.", price: 0, img: "https://images.unsplash.com/photo-1615557960916-5f4791effe9d?auto=format&fit=crop&w=900&q=80", supplements: SUPP_DEFAULT },
+    ],
+    burgers: [
+      { id: "burg-classic", name: "Burger Classique", desc: "Steak grillé, salade, tomate, sauce maison.", price: 0, badge: "Populaire", img: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=900&q=80", accomp: ACCOMP_DEFAULT, supplements: SUPP_DEFAULT },
+      { id: "burg-poulet", name: "Burger Poulet", desc: "Filet de poulet pané, salade, sauce maison.", price: 0, img: "https://images.unsplash.com/photo-1550317138-10000687a72b?auto=format&fit=crop&w=900&q=80", accomp: ACCOMP_DEFAULT, supplements: SUPP_DEFAULT },
+      { id: "burg-double", name: "Burger Double", desc: "Deux steaks, double fromage, sauce maison.", price: 0, badge: "Nouveau", img: "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=900&q=80", accomp: ACCOMP_DEFAULT, supplements: SUPP_DEFAULT },
+    ],
+    grillades: [
+      { id: "gr-demipoulet", name: "Demi-Poulet Grillé", desc: "Poulet grillé, servi avec accompagnement.", price: 0, badge: "Populaire", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&w=900&q=80", accomp: ACCOMP_DEFAULT },
+      { id: "gr-brochettes", name: "Brochettes Mixtes", desc: "Assortiment de brochettes grillées.", price: 0, img: "https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?auto=format&fit=crop&w=900&q=80", accomp: ACCOMP_DEFAULT },
+    ],
+    fruitsdemer: [
+      { id: "fdm-poisson", name: "Poisson Braisé", desc: "Poisson braisé maison, servi avec accompagnement.", price: 0, badge: "Populaire", img: "https://images.unsplash.com/photo-1580959375944-abd7e991f971?auto=format&fit=crop&w=900&q=80", accomp: ACCOMP_DEFAULT },
+      { id: "fdm-crevgrill", name: "Crevettes Grillées", desc: "Crevettes grillées, sauce maison.", price: 0, img: "https://images.unsplash.com/photo-1565680018434-b513d5e5fd47?auto=format&fit=crop&w=900&q=80", accomp: ACCOMP_DEFAULT },
+      { id: "fdm-crevsauce", name: "Crevettes Sauce", desc: "Crevettes mijotées en sauce épicée.", price: 0, img: "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&w=900&q=80", accomp: ACCOMP_DEFAULT },
+    ],
+    pizza: [
+      { id: "piz-margherita", name: "Pizza Margherita", desc: "Tomate, mozzarella, basilic.", price: 0, img: "https://images.unsplash.com/photo-1548365328-9f547fb0953b?auto=format&fit=crop&w=900&q=80" },
+      { id: "piz-poulet", name: "Pizza Poulet", desc: "Poulet, poivrons, oignons, fromage.", price: 0, img: "https://images.unsplash.com/photo-1594007654729-407eedc4be65?auto=format&fit=crop&w=900&q=80" },
+    ],
+    accompagnements: [
+      { id: "acc-frites", name: "Frites", desc: "Frites maison, croustillantes.", price: 0, img: "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?auto=format&fit=crop&w=900&q=80" },
+      { id: "acc-salade", name: "Salade Verte", desc: "Salade fraîche du jour.", price: 0, img: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=900&q=80" },
+    ],
+    boissons: [
+      { id: "boi-jus", name: "Jus Naturel", desc: "Selon fruit disponible, pressé sur place.", price: 0, img: "https://images.unsplash.com/photo-1546171753-97d7676e4602?auto=format&fit=crop&w=900&q=80" },
+      { id: "boi-milkshake", name: "Milkshake Maison", desc: "Vanille, chocolat ou fraise.", price: 0, img: "https://images.unsplash.com/photo-1572490122747-3968b75cc699?auto=format&fit=crop&w=900&q=80" },
+    ],
+    desserts: [
+      { id: "des-glace", name: "Glace — 2 boules", desc: "Selon parfum disponible.", price: 0, img: "https://images.unsplash.com/photo-1497034825429-c343d7c6a68f?auto=format&fit=crop&w=900&q=80" },
+      { id: "des-gateau", name: "Part de Gâteau", desc: "Sélection du jour, fait maison.", price: 0, badge: "Nouveau", img: "https://images.unsplash.com/photo-1571115177098-24ec42ed204d?auto=format&fit=crop&w=900&q=80" },
+    ],
+  };
+  // Catégorie "Populaires" = tout produit avec badge Populaire/Best Seller
+  MENU.populaires = Object.values(MENU).flat().filter((p) => p.badge === "Populaire" || p.badge === "Best Seller");
+
+  function fmt(n) { return n > 0 ? n.toLocaleString("fr-FR") + " FCFA" : "Prix à confirmer"; }
+
+  // ============ RENDU DES CARTES PRODUITS (avec skeleton) ============
+  const grid = document.getElementById("productGrid");
+  const skeletonGrid = document.getElementById("skeletonGrid");
+
+  function showSkeleton() {
+    skeletonGrid.innerHTML = Array.from({ length: 6 }).map(() => `
+      <div class="rounded-3xl overflow-hidden border border-line">
+        <div class="skeleton aspect-[4/3]"></div>
+        <div class="p-5 space-y-2">
+          <div class="skeleton h-4 w-2/3 rounded"></div>
+          <div class="skeleton h-3 w-full rounded"></div>
+          <div class="skeleton h-5 w-1/3 rounded mt-3"></div>
+        </div>
+      </div>
+    `).join("");
+    skeletonGrid.classList.remove("hidden");
+    grid.classList.add("hidden");
+  }
+
+  function renderMenu(cat) {
+    showSkeleton();
+    setTimeout(() => {
+      grid.innerHTML = "";
+      MENU[cat].forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "p-card bg-panel border border-line rounded-3xl overflow-hidden";
+        card.innerHTML = `
+          <div class="aspect-[4/3] overflow-hidden relative">
+            ${item.badge ? `<span class="absolute left-3 top-3 z-10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide rounded-full ${item.badge === "Nouveau" ? "bg-flame text-ink" : "bg-red text-bone"}">${item.badge}</span>` : ""}
+            <img src="${item.img}" alt="${item.name}" class="p-img w-full h-full object-cover">
+          </div>
+          <div class="p-5">
+            <h3 class="font-serif italic font-bold text-lg text-bone leading-tight">${item.name}</h3>
+            <p class="text-sm text-mut mt-1.5 leading-snug">${item.desc}</p>
+            <div class="flex items-center justify-between mt-3.5">
+              <p class="font-bold ${item.price > 0 ? "text-bone" : "text-mut italic text-sm"}">${fmt(item.price)}</p>
+              <button class="quick-add w-9 h-9 rounded-full bg-red text-bone font-bold text-lg hover:bg-red-deep transition-colors">+</button>
+            </div>
+          </div>
+        `;
+        card.addEventListener("mousemove", (e) => {
+          const rect = card.getBoundingClientRect();
+          const x = (e.clientX - rect.left) / rect.width - 0.5;
+          const y = (e.clientY - rect.top) / rect.height - 0.5;
+          card.style.transform = `rotateY(${x * 10}deg) rotateX(${-y * 10}deg) translateY(-4px)`;
+        });
+        card.addEventListener("mouseleave", () => { card.style.transform = ""; });
+        card.querySelector(".quick-add").addEventListener("click", (e) => {
+          e.stopPropagation();
+          openModal(item);
+        });
+        card.addEventListener("click", () => openModal(item));
+        grid.appendChild(card);
+      });
+      skeletonGrid.classList.add("hidden");
+      grid.classList.remove("hidden");
+    }, 280);
+  }
+
+  // ============ CATÉGORIES (scroll horizontal + indicateur animé) ============
+  const catScroll = document.getElementById("catScroll");
+  const catIndicator = document.getElementById("catIndicator");
+
+  function moveIndicator(btn) {
+    catIndicator.style.width = btn.offsetWidth + "px";
+    catIndicator.style.transform = `translateX(${btn.offsetLeft}px)`;
+  }
+
+  document.querySelectorAll(".cat-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".cat-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      moveIndicator(btn);
+      renderMenu(btn.dataset.cat);
+    });
+  });
+
+  // ============ MODAL PRODUIT (personnalisation) ============
+  const modal = document.getElementById("productModal");
+  const modalCard = document.getElementById("productModalCard");
+  let currentItem = null;
+  let currentQty = 1;
+
+  function openModal(item) {
+    currentItem = item;
+    currentQty = 1;
+    document.getElementById("modalImg").src = item.img;
+    document.getElementById("modalImg").alt = item.name;
+    document.getElementById("modalName").textContent = item.name;
+    document.getElementById("modalDesc").textContent = item.desc;
+    document.getElementById("modalInstructions").value = "";
+    document.getElementById("modalQty").textContent = "1";
+
+    const badgeEl = document.getElementById("modalBadge");
+    if (item.badge) { badgeEl.textContent = item.badge; badgeEl.classList.remove("hidden"); }
+    else { badgeEl.classList.add("hidden"); }
+
+    const accompSection = document.getElementById("modalAccompSection");
+    const accompList = document.getElementById("modalAccompList");
+    accompList.innerHTML = "";
+    if (item.accomp) {
+      item.accomp.forEach((opt, i) => {
+        accompList.innerHTML += `
+          <label class="flex items-center gap-3 bg-panel2 border border-line rounded-xl px-3.5 py-2.5 cursor-pointer">
+            <input type="radio" name="accomp" value="${opt}" ${i === 0 ? "checked" : ""} class="accent-red">
+            <span class="text-sm">${opt}</span>
+          </label>`;
+      });
+      accompSection.classList.remove("hidden");
+    } else {
+      accompSection.classList.add("hidden");
+    }
+
+    const suppSection = document.getElementById("modalSupplementsSection");
+    const suppList = document.getElementById("modalSupplementsList");
+    suppList.innerHTML = "";
+    if (item.supplements) {
+      item.supplements.forEach((s) => {
+        suppList.innerHTML += `
+          <label class="flex items-center justify-between gap-3 bg-panel2 border border-line rounded-xl px-3.5 py-2.5 cursor-pointer">
+            <span class="flex items-center gap-3 text-sm">
+              <input type="checkbox" value="${s.name}" data-price="${s.price}" class="supp-check accent-red">
+              ${s.name}
+            </span>
+            <span class="text-xs text-mut">${s.price > 0 ? "+" + fmt(s.price) : ""}</span>
+          </label>`;
+      });
+      suppSection.classList.remove("hidden");
+    } else {
+      suppSection.classList.add("hidden");
+    }
+
+    updateModalPrice();
+
+    modal.classList.remove("pointer-events-none");
+    modal.style.opacity = "1";
+    requestAnimationFrame(() => {
+      modalCard.style.opacity = "1";
+      modalCard.style.transform = "translateY(0) scale(1)";
+    });
+
+    modal.querySelectorAll(".supp-check").forEach((cb) => cb.addEventListener("change", updateModalPrice));
+  }
+
+  function closeModal() {
+    modal.style.opacity = "0";
+    modalCard.style.opacity = "0";
+    modalCard.style.transform = "translateY(24px) scale(0.97)";
+    setTimeout(() => modal.classList.add("pointer-events-none"), 250);
+  }
+  document.getElementById("closeModal").addEventListener("click", closeModal);
+  document.getElementById("productModalOverlay").addEventListener("click", closeModal);
+
+  function getSelectedSupplements() {
+    return Array.from(modal.querySelectorAll(".supp-check:checked")).map((cb) => ({
+      name: cb.value, price: parseInt(cb.dataset.price) || 0,
+    }));
+  }
+
+  function computeUnitPrice() {
+    const suppTotal = getSelectedSupplements().reduce((s, x) => s + x.price, 0);
+    return (currentItem.price || 0) + suppTotal;
+  }
+
+  function updateModalPrice() {
+    document.getElementById("modalPrice").textContent = fmt(computeUnitPrice() * currentQty);
+  }
+
+  document.getElementById("modalQtyMinus").addEventListener("click", () => {
+    currentQty = Math.max(1, currentQty - 1);
+    document.getElementById("modalQty").textContent = currentQty;
+    updateModalPrice();
+  });
+  document.getElementById("modalQtyPlus").addEventListener("click", () => {
+    currentQty += 1;
+    document.getElementById("modalQty").textContent = currentQty;
+    updateModalPrice();
+  });
+
+  document.getElementById("modalAddBtn").addEventListener("click", () => {
+    const accompEl = modal.querySelector('input[name="accomp"]:checked');
+    const accomp = accompEl ? accompEl.value : null;
+    const supplements = getSelectedSupplements();
+    const instructions = document.getElementById("modalInstructions").value.trim();
+    const unitPrice = computeUnitPrice();
+
+    const key = [currentItem.id, accomp, supplements.map((s) => s.name).sort().join(","), instructions].join("|");
+    const existing = cart.find((c) => c.key === key);
+    if (existing) existing.qty += currentQty;
+    else cart.push({
+      key, id: currentItem.id, name: currentItem.name, img: currentItem.img,
+      unitPrice, qty: currentQty, accomp, supplements, instructions,
+    });
+
+    updateCartUI();
+    showToast(`+${currentQty} ajouté${currentQty > 1 ? "s" : ""} au panier`);
+    closeModal();
+  });
+
+  // ============ TOAST ============
+  const toast = document.getElementById("toast");
+  let toastTimer;
+  function showToast(text) {
+    document.getElementById("toastText").textContent = text;
+    toast.style.opacity = "1";
+    toast.style.transform = "translateY(0)";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(12px)";
+    }, 1800);
+  }
+
+  // ============ PANIER (état en mémoire) ============
+  let cart = [];
+
+  function cartTotal() { return cart.reduce((s, c) => s + c.unitPrice * c.qty, 0); }
+  function cartCount() { return cart.reduce((s, c) => s + c.qty, 0); }
+
+  function changeQty(key, delta) {
+    const it = cart.find((c) => c.key === key);
+    if (!it) return;
+    it.qty += delta;
+    if (it.qty <= 0) cart = cart.filter((c) => c.key !== key);
+    updateCartUI();
+  }
+
+  function updateCartUI() {
+    const count = cartCount();
+    const total = cartTotal();
+
+    // Header desktop
+    document.getElementById("desktopCartCount").textContent = count;
+    document.getElementById("desktopCartCount").classList.add("pop");
+    setTimeout(() => document.getElementById("desktopCartCount").classList.remove("pop"), 350);
+    document.getElementById("desktopCartLabel").textContent = count > 0 ? fmt(total) : "Panier vide";
+
+    // Barre mobile
+    const mobileBar = document.getElementById("mobileCartBar");
+    document.getElementById("mobileCartCount").textContent = count;
+    document.getElementById("mobileCartTotal").textContent = fmt(total);
+    mobileBar.style.transform = count > 0 ? "translateY(0)" : "translateY(120px)";
+
+    // Contenu du panier
+    const itemsEl = document.getElementById("cartItems");
+    const emptyEl = document.getElementById("cartEmptyState");
+    const footerEl = document.getElementById("cartFooter");
+
+    if (cart.length === 0) {
+      emptyEl.classList.remove("hidden");
+      itemsEl.classList.add("hidden");
+      footerEl.classList.add("hidden");
+    } else {
+      emptyEl.classList.add("hidden");
+      itemsEl.classList.remove("hidden");
+      footerEl.classList.remove("hidden");
+
+      itemsEl.innerHTML = cart.map((c) => `
+        <div class="flex gap-3">
+          <img src="${c.img}" class="w-16 h-16 rounded-xl object-cover flex-shrink-0">
+          <div class="flex-1 min-w-0">
+            <p class="font-bold text-sm text-bone truncate">${c.name}</p>
+            ${c.accomp ? `<p class="text-xs text-mut">Accompagnement : ${c.accomp}</p>` : ""}
+            ${c.supplements.length ? `<p class="text-xs text-mut">+ ${c.supplements.map((s) => s.name).join(", ")}</p>` : ""}
+            ${c.instructions ? `<p class="text-xs text-flame italic">"${c.instructions}"</p>` : ""}
+            <div class="flex items-center justify-between mt-1.5">
+              <div class="flex items-center gap-2">
+                <button data-key="${c.key}" data-d="-1" class="qty-btn w-6 h-6 rounded-full border border-line flex items-center justify-center text-xs">−</button>
+                <span class="w-5 text-center text-xs font-semibold">${c.qty}</span>
+                <button data-key="${c.key}" data-d="1" class="qty-btn w-6 h-6 rounded-full border border-line flex items-center justify-center text-xs">+</button>
+              </div>
+              <p class="text-sm font-bold text-bone">${fmt(c.unitPrice * c.qty)}</p>
+            </div>
+          </div>
+        </div>
+      `).join("");
+      itemsEl.querySelectorAll(".qty-btn").forEach((btn) => {
+        btn.addEventListener("click", () => changeQty(btn.dataset.key, parseInt(btn.dataset.d)));
+      });
+    }
+
+    document.getElementById("cartSubtotal").textContent = fmt(total);
+    document.getElementById("cartTotal").textContent = fmt(total);
+
+    const lines = cart.map((c) => {
+      let l = `${c.qty}x ${c.name}`;
+      if (c.accomp) l += ` (${c.accomp})`;
+      if (c.supplements.length) l += ` + ${c.supplements.map((s) => s.name).join(", ")}`;
+      if (c.instructions) l += ` — "${c.instructions}"`;
+      return l;
+    }).join("\n");
+    const msg = cart.length
+      ? `Bonjour, je voudrais commander :\n\n${lines}\n\n(Merci de me confirmer le prix total)`
+      : "Bonjour, je voudrais passer une commande.";
+    document.getElementById("whatsappOrder").href = `https://wa.me/${RESTO_NUMBER}?text=${encodeURIComponent(msg)}`;
+  }
+
+  // ============ OUVERTURE / FERMETURE DU PANIER ============
+  const cartPanel = document.getElementById("cartPanel");
+  const cartOverlay = document.getElementById("cartOverlay");
+  function openCart() {
+    cartOverlay.style.opacity = "1";
+    cartOverlay.classList.remove("pointer-events-none");
+    cartPanel.classList.remove("translate-y-full", "sm:translate-x-full");
+  }
+  function closeCartFn() {
+    cartOverlay.style.opacity = "0";
+    cartOverlay.classList.add("pointer-events-none");
+    cartPanel.classList.add("translate-y-full", "sm:translate-x-full");
+  }
+  document.getElementById("desktopCartBtn").addEventListener("click", openCart);
+  document.getElementById("mobileCartBtn").addEventListener("click", openCart);
+  document.getElementById("closeCart").addEventListener("click", closeCartFn);
+  cartOverlay.addEventListener("click", closeCartFn);
+
+  // ============ FAQ (accordéon) ============
+  const FAQS = [
+    { q: "Comment passer commande ?", a: "Ajoutez vos plats au panier, personnalisez-les si besoin, puis cliquez sur \"Commander maintenant\" — le message avec le détail de votre commande s'ouvre automatiquement sur WhatsApp." },
+    { q: "Livrez-vous à domicile ?", a: "La zone de livraison et les délais sont confirmés directement avec vous sur WhatsApp au moment de la commande." },
+    { q: "Quels sont les moyens de paiement ?", a: "Le paiement se fait directement avec le livreur ou sur place, à la confirmation de la commande." },
+    { q: "Vos plats sont-ils halal ?", a: "Oui, tous nos plats sont préparés halal." },
+  ];
+  const faqList = document.getElementById("faqList");
+  FAQS.forEach((item) => {
+    const row = document.createElement("div");
+    row.innerHTML = `
+      <button class="faq-btn w-full flex items-center justify-between py-5 text-left">
+        <span class="font-serif italic font-bold text-lg text-bone">${item.q}</span>
+        <span class="faq-icon text-red text-2xl leading-none transition-transform">+</span>
+      </button>
+      <div class="faq-answer overflow-hidden max-h-0 transition-all duration-300">
+        <p class="pb-5 text-mut text-sm leading-relaxed">${item.a}</p>
+      </div>
+    `;
+    const btn = row.querySelector(".faq-btn");
+    const answer = row.querySelector(".faq-answer");
+    const icon = row.querySelector(".faq-icon");
+    btn.addEventListener("click", () => {
+      const isOpen = answer.style.maxHeight && answer.style.maxHeight !== "0px";
+      document.querySelectorAll(".faq-answer").forEach((a) => (a.style.maxHeight = "0px"));
+      document.querySelectorAll(".faq-icon").forEach((ic) => (ic.style.transform = "rotate(0deg)"));
+      if (!isOpen) {
+        answer.style.maxHeight = answer.scrollHeight + "px";
+        icon.style.transform = "rotate(45deg)";
+      }
+    });
+    faqList.appendChild(row);
+  });
+
+  // ============ INIT ============
+  const firstCat = document.querySelector('.cat-btn[data-cat="populaires"]');
+  moveIndicator(firstCat);
+  window.addEventListener("resize", () => moveIndicator(document.querySelector(".cat-btn.active")));
+  renderMenu("populaires");
+  updateCartUI();
+</script>
+
+</body>
+</html>
